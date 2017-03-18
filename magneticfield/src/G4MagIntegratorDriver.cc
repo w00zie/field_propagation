@@ -601,22 +601,22 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
     	if ( errmax_sq == 0.0 )
     		scale = maxscale;
     	else {							// PI control if beta !=0
-    		scale = getSafety()*pow(errmax_sq,-alpha)*pow(errold,beta);
+    		scale = getSafety()*std::pow(errmax_sq,-alpha)*std::pow(errold,beta);
     		if (scale<minscale) scale = miscale;
     		if (scale>maxscale) scale = maxscale;
     	}
     	if (reject)							// Don't let step increase
-    		hnext = h*MIN(scale,1.0);		// if last one was rejected
+    		hnext = h*std::min(scale,1.0);		// if last one was rejected
     	else
     		hnext = h*scale;
 
-    	errold = MAX(errmax_sq,1.0e-4);		// Bookkeeping for next call
+    	errold = std::max(errmax_sq,1.0e-4);		// Bookkeeping for next call
     	reject = false;
     	return true;
 
     } else {							// Truncation error too large
     									// reduce stepsize
-    	scale = MAX(getSafety()*pow(errmax_sq,-alpha),minscale);
+    	scale = std::max(getSafety()*std::pow(errmax_sq,-alpha),minscale);
     	h = h*scale;
     	reject = true;
 
