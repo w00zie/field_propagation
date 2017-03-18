@@ -536,6 +536,11 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
 {
   G4double errmax_sq;
   G4double h, htemp, xnew ;
+  bool reject = false;
+  G4double errold = 1.0e-4;
+  static const G4double beta=0.0, alpha=0.2-beta*0.75,safe=0.9,minscale=0.2,
+		  maxscale=0.10;
+  G4doub scale;
 
   G4double yerr[G4FieldTrack::ncompSVEC], ytemp[G4FieldTrack::ncompSVEC];
 
@@ -583,16 +588,44 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
       errmax_sq = std::max( errmax_sq, errspin_sq ); 
    }
 
-    if ( errmax_sq <= 1.0 )  { break; } // Step succeeded. 
+    /*
+     * PI (Proportional feedback / Integral feedback) stepsize control :
+     * the next step size h, hnext, is computed as
+     * 		hnext = Safe * h * err_n ^(-a) * err_n-1 ^(b)
+     * where a and b should be scaled as 1/k
+     * Ref : Numerical Recepies 3rd edition 2007, p. 915-920
+     */
 
-    // Step failed; compute the size of retrial Step.
-    htemp = GetSafety()*h* std::pow( errmax_sq, 0.5*GetPshrnk() );
 
-    if (htemp >= 0.1*h)  { h = htemp; }  // Truncation error too large,
-    else  { h = 0.1*h; }                 // reduce stepsize, but no more
-                                         // than a factor of 10
+    if ( errmax_sq <= 1.0 )  {			// step succeeded.
+    	if ( errmax_sq == 0.0 )
+    		scale = maxscale;
+    	else {							// PI control if beta !=0
+    		scale = getSafety()*pow(errmax_sq,-alpha)*pow(errold,beta);
+    		if (scale<minscale) scale = miscale;
+    		if (scale>maxscale) scale = maxscale;
+    	}
+    	if (reject)							// Don't let step increase
+    		hnext = h*MIN(scale,1.0);		// if last one was rejected
+    	else
+    		hnext = h*scale;
+
+    	errold = MAX(errmax_sq,1.0e-4);		// Bookkeeping for next call
+    	reject = false;
+    	return true;
+
+    } else {							// Truncation error too large
+    									// reduce stepsize
+    	scale = MAX(getSafety()*pow(errmax_sq,-alpha),minscale);
+    	h = h*scale;
+    	reject = true;
+
+    	return false;
+    }
+
     xnew = x + h;
-    if(xnew == x)
+
+    if(xnew == x)						// if x_new = x_old
     {
       G4cerr << "G4MagIntegratorDriver::OneGoodStep:" << G4endl
              << "  Stepsize underflow in Stepper " << G4endl ;
@@ -611,15 +644,6 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
   fDyerrVel_lgTot += errvel_sq * h * h; 
 #endif
 
-  // Compute size of next Step
-  if (errmax_sq > errcon*errcon)
-  { 
-    hnext = GetSafety()*h*std::pow(errmax_sq, 0.5*GetPgrow());
-  }
-  else
-  {
-    hnext = max_stepping_increase*h ; // No more than a factor of 5 increase
-  }
   x += (hdid = h);
 
   for(G4int k=0;k<fNoIntegrationVariables;k++) { y[k] = ytemp[k]; }
