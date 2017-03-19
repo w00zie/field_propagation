@@ -538,7 +538,7 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
   G4double h, htemp, xnew ;
   bool reject = false;
   G4double errold = 1.0e-4;
-  static const G4double beta=0.0, alpha=0.2-beta*0.75,safe=0.9,minscale=0.2,
+  static const G4double beta=0.4, alpha=0.2-beta*0.75,safe=0.9,minscale=0.2,
 		  maxscale=0.10;
   G4doub scale;
 
@@ -588,40 +588,7 @@ G4MagInt_Driver::OneGoodStep(      G4double y[],        // InOut
       errmax_sq = std::max( errmax_sq, errspin_sq ); 
    }
 
-    /*
-     * PI (Proportional feedback / Integral feedback) stepsize control :
-     * the next step size h, hnext, is computed as
-     * 		hnext = Safe * h * err_n ^(-a) * err_n-1 ^(b)
-     * where a and b should be scaled as 1/k
-     * Ref : Numerical Recepies 3rd edition 2007, p. 915-920
-     */
-
-
-    if ( errmax_sq <= 1.0 )  {			// step succeeded.
-    	if ( errmax_sq == 0.0 )
-    		scale = maxscale;
-    	else {							// PI control if beta !=0
-    		scale = getSafety()*std::pow(errmax_sq,-alpha)*std::pow(errold,beta);
-    		if (scale<minscale) scale = miscale;
-    		if (scale>maxscale) scale = maxscale;
-    	}
-    	if (reject)							// Don't let step increase
-    		hnext = h*std::min(scale,1.0);		// if last one was rejected
-    	else
-    		hnext = h*scale;
-
-    	errold = std::max(errmax_sq,1.0e-4);		// Bookkeeping for next call
-    	reject = false;
-    	return true;
-
-    } else {							// Truncation error too large
-    									// reduce stepsize
-    	scale = std::max(getSafety()*std::pow(errmax_sq,-alpha),minscale);
-    	h = h*scale;
-    	reject = true;
-
-    	return false;
-    }
+    h = ComputeNewStepSize(errmax_sq,h);
 
     xnew = x + h;
 
@@ -771,30 +738,47 @@ G4bool  G4MagInt_Driver::QuickAdvance(
 
 // --------------------------------------------------------------------------
 
-//  This method computes new step sizes - but does not limit changes to
-//   within  certain factors
-// 
+//	This method computes the new step size with PI adaptive control.
+//	hnext is computed as :
+//	hnext = safe * h * err^(-alpha) * old_error^(beta)
+//	where old_error is the error at the previous step.
+//	Ref: Numerical Recepies 3rd ed. 2007, p. 915.
+
 G4double 
 G4MagInt_Driver::ComputeNewStepSize( 
                           G4double  errMaxNorm,    // max error  (normalised)
                           G4double  hstepCurrent)  // current step size
 {
   G4double hnew;
+  bool reject = false;
+  G4double old_error = 1.0e-4;
+  static const G4double beta = 0.4, alpha = 0.2-beta*0.75, minscale = 0.2,
+		  maxscale = 0.10;
 
-  // Compute size of next Step for a failed step
-  if(errMaxNorm > 1.0 )
-  {
-    // Step failed; compute the size of retrial Step.
-    hnew = GetSafety()*hstepCurrent*std::pow(errMaxNorm,GetPshrnk()) ;
-  } else if(errMaxNorm > 0.0 ) {
-    // Compute size of next Step for a successful step
-    hnew = GetSafety()*hstepCurrent*std::pow(errMaxNorm,GetPgrow()) ;
-  } else {
-    // if error estimate is zero (possible) or negative (dubious)
-    hnew = max_stepping_increase * hstepCurrent; 
-  }
+  if ( errMaxNorm <= 1.0 )  {			// step succeeded.
+      	if ( errMaxNorm == 0.0 )
+  	  scale = maxscale;
+      	else {							// PI control if beta !=0
+  	  scale = safe*std::pow(errMaxNorm,-alpha)*std::pow(old_error,beta);
+  	  if (scale<minscale) scale = minscale;
+  	  if (scale>maxscale) scale = maxscale;
+      	}
+      	if (reject) {							// Don't let step increase
+      		hnext = hstepCurrent*std::min(scale,1.0);				// if last one was rejected
+      	} else {
+      		hnext = hstepCurrent*scale;
 
-  return hnew;
+      	old_error = std::max(errMaxNorm,1.0e-4);		// Bookkeeping for next call
+      	reject = false;
+      	return hnext;
+      	}
+      } else {					// Truncation error too large
+  								// reduce stepsize
+      	scale = std::max(safe*std::pow(errMaxNorm,-alpha),minscale);
+      	h = h*scale;
+      	reject = true;
+      	return hnext;
+      }
 }
 
 // ---------------------------------------------------------------------------
