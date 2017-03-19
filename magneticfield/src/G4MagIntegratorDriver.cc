@@ -759,7 +759,7 @@ G4MagInt_Driver::ComputeNewStepSize(
       	if ( errMaxNorm == 0.0 )
   	  scale = maxscale;
       	else {							// PI control if beta !=0
-  	  scale = safe*std::pow(errMaxNorm,-alpha)*std::pow(old_error,beta);
+  	  scale = getSafety()*std::pow(errMaxNorm,-alpha)*std::pow(old_error,beta);
   	  if (scale<minscale) scale = minscale;
   	  if (scale>maxscale) scale = maxscale;
       	}
@@ -774,7 +774,7 @@ G4MagInt_Driver::ComputeNewStepSize(
       	}
       } else {					// Truncation error too large
   								// reduce stepsize
-      	scale = std::max(safe*std::pow(errMaxNorm,-alpha),minscale);
+      	scale = std::max(getSafety()*std::pow(errMaxNorm,-alpha),minscale);
       	h = h*scale;
       	reject = true;
       	return hnext;
